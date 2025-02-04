@@ -55,11 +55,15 @@ app.get("/books", (req, res) => {
 // Serve static files from the "Images" folder
 app.use("/Images", express.static(path.join(__dirname, "Images")));
 
+
+const backendUrl = process.env.BACKEND_URL || "http://localhost:4000";
+
+
 // API to get all categories
 app.get("/categories", (req, res) => {
   const categories = Object.keys(bookData.categories).map((category) => ({
     categoryName: bookData.categories[category].name,
-    imageURL: `http://localhost:4000/${bookData.categories[category].image}`, // Serve images from the backend
+    imageURL: `${backendUrl}/${bookData.categories[category].image}`, // Serve images from the backend
   }));
   res.json(categories);
 });
@@ -73,7 +77,7 @@ app.get("/books/:category", (req, res) => {
   if (bookData[category]) {
     const booksWithImages = bookData[category].map((book) => ({
       ...book,
-      image: `http://localhost:4000/${book.image}`, // Correcting the image URL
+      image: `${backendUrl}/${book.image}`, // Correcting the image URL
     }));
     res.json(booksWithImages);
   } else {
