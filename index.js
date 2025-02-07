@@ -10,10 +10,11 @@ const session = require("express-session");
 require("dotenv").config();
 
 const app = express();
-// app.use(cors());
+
+// Middleware
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://ebook-hazel-psi.vercel.app"], // Add both localhost and your deployed domain
+    origin: ["http://localhost:3000", "https://ebook-hazel-psi.vercel.app"], // Allowed domains
     methods: ["GET", "POST", "PUT", "DELETE"], // Allowed HTTP methods
     credentials: true, // Allow cookies & auth headers
   })
@@ -45,39 +46,123 @@ if (fs.existsSync(bookDataPath)) {
   console.error("book.json file not found!");
 }
 
+// Serve static files from the "Images" folder
+app.use("/Images", express.static(path.join(__dirname, "Images")));
+
+const backendUrl = process.env.BACKEND_URL || "http://localhost:4000";
+
+// ==================== NEW: Like and Comment Schemas ====================
+const likeSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "Register" }, // User who liked
+  bookTitle: { type: String, required: true }, // Book title from JSON
+  bookCategory: { type: String, required: true }, // Book category from JSON
+});
+
+const Like = mongoose.model("Like", likeSchema);
+
+const commentSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "Register" }, // User who commented
+  bookTitle: { type: String, required: true }, // Book title from JSON
+  bookCategory: { type: String, required: true }, // Book category from JSON
+  text: { type: String, required: true }, // Comment text
+  createdAt: { type: Date, default: Date.now }, // Timestamp
+});
+
+const Comment = mongoose.model("Comment", commentSchema);
+
+// ==================== NEW: Like and Comment Endpoints ====================
+
+// Like/Unlike a book
+app.post("/book/:category/:title/like", authMiddleware, async (req, res) => {
+  const { category, title } = req.params;
+  const userId = req.user.userId;
+
+  try {
+    // Check if the user already liked the book
+    const existingLike = await Like.findOne({
+      user: userId,
+      bookTitle: title,
+      bookCategory: category,
+    });
+
+    if (existingLike) {
+      // Unlike: Remove the like
+      await Like.deleteOne({ _id: existingLike._id });
+      res.status(200).json({ liked: false });
+    } else {
+      // Like: Add a new like
+      const newLike = new Like({
+        user: userId,
+        bookTitle: title,
+        bookCategory: category,
+      });
+      await newLike.save();
+      res.status(200).json({ liked: true });
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Add a comment to a book
+app.post("/book/:category/:title/comment", authMiddleware, async (req, res) => {
+  const { category, title } = req.params;
+  const { text } = req.body;
+  const userId = req.user.userId;
+
+  try {
+    const newComment = new Comment({
+      user: userId,
+      bookTitle: title,
+      bookCategory: category,
+      text,
+    });
+    await newComment.save();
+    res.status(201).json(newComment);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Get likes and comments for a book
+app.get("/book/:category/:title/details", async (req, res) => {
+  const { category, title } = req.params;
+
+  try {
+    const likes = await Like.countDocuments({ bookTitle: title, bookCategory: category });
+    const comments = await Comment.find({ bookTitle: title, bookCategory: category })
+      .populate("user", "name") // Populate user details
+      .sort({ createdAt: -1 }); // Sort by latest comments
+
+    res.status(200).json({ likes, comments });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ==================== Existing Endpoints ====================
 
 // API to get all books
 app.get("/books", (req, res) => {
   res.json(bookData);
 });
 
-
-// Serve static files from the "Images" folder
-app.use("/Images", express.static(path.join(__dirname, "Images")));
-
-
-const backendUrl = process.env.BACKEND_URL || "http://localhost:4000";
-
-
 // API to get all categories
 app.get("/categories", (req, res) => {
   const categories = Object.keys(bookData.categories).map((category) => ({
     categoryName: bookData.categories[category].name,
-    imageURL: `${backendUrl}/${bookData.categories[category].image}`, // Serve images from the backend
+    imageURL: `${backendUrl}/${bookData.categories[category].image}`,
   }));
   res.json(categories);
 });
 
-
 // API to get all books by category
-
-
 app.get("/books/:category", (req, res) => {
   const category = req.params.category;
   if (bookData[category]) {
     const booksWithImages = bookData[category].map((book) => ({
       ...book,
-      image: `${backendUrl}/${book.image}`, // Correcting the image URL
+      image: `${backendUrl}/${book.image}`,
     }));
     res.json(booksWithImages);
   } else {
@@ -85,15 +170,7 @@ app.get("/books/:category", (req, res) => {
   }
 });
 
-
-// API to get all categories
-app.get("/categories", (req, res) => {
-  res.json(bookData.categories);
-});
-
 // API to get book details by category and title
-// Get book details
-// Replace getBookData() with bookData directly
 app.get("/book/:category/:title", (req, res) => {
   const { category, title } = req.params;
 
@@ -112,9 +189,6 @@ app.get("/book/:category/:title", (req, res) => {
   res.json(book);
 });
 
-
-
-
 // Register Schema & Model
 const RegisterSchema = new mongoose.Schema({
   name: String,
@@ -127,7 +201,7 @@ const Register = mongoose.model("Register", RegisterSchema);
 // Register Route
 app.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
-  console.log({ name, email, password })
+  console.log({ name, email, password });
   try {
     const existingUser = await Register.findOne({ email });
     if (existingUser) {
@@ -159,8 +233,12 @@ app.post("/login", async (req, res) => {
       process.env.JWT_SECRET || "your_jwt_secret",
       { expiresIn: "1h" }
     );
-    res.status(200).json({ message: "Login successful", token });
-  } catch (error) {
+    res.status(200).json({ 
+      message: "Login successful", 
+      token,
+      userId: user._id,  // Sending explicitly
+      email: user.email  // Sending explicitly
+    });  } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -193,11 +271,10 @@ app.get("/profile", authMiddleware, async (req, res) => {
   }
 });
 
-
-app.get('/', (req, res) => {
-  res.send('Hello World!')
-  })
-
+// Default route
+app.get("/", (req, res) => {
+  res.send("Hello World!");
+});
 
 // Server Listening
 app.listen(4000, () => console.log("Server running on port 4000"));
