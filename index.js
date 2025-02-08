@@ -46,22 +46,6 @@ if (fs.existsSync(bookDataPath)) {
   console.error("book.json file not found!");
 }
 
-// Middleware to protect routes
-const authMiddleware = (req, res, next) => {
-  const token = req.header("Authorization");
-  if (!token) {
-    return res.status(401).json({ message: "No token provided, authorization denied" });
-  }
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret");
-    req.user = decoded;
-    next();
-  } catch (error) {
-    res.status(401).json({ message: "Token is not valid" });
-  }
-};
-
-
 // Serve static files from the "Images" folder
 app.use("/Images", express.static(path.join(__dirname, "Images")));
 
@@ -85,6 +69,21 @@ const commentSchema = new mongoose.Schema({
 });
 
 const Comment = mongoose.model("Comment", commentSchema);
+
+// Middleware to protect routes
+const authMiddleware = (req, res, next) => {
+  const token = req.header("Authorization");
+  if (!token) {
+    return res.status(401).json({ message: "No token provided, authorization denied" });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret");
+    req.user = decoded;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: "Token is not valid" });
+  }
+};
 
 // ==================== NEW: Like and Comment Endpoints ====================
 
@@ -258,21 +257,6 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-// Middleware to protect routes
-const authMiddleware = (req, res, next) => {
-  const token = req.header("Authorization");
-  if (!token) {
-    return res.status(401).json({ message: "No token provided, authorization denied" });
-  }
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret");
-    req.user = decoded;
-    next();
-  } catch (error) {
-    res.status(401).json({ message: "Token is not valid" });
-  }
-};
 
 // Protected route example
 app.get("/profile", authMiddleware, async (req, res) => {
