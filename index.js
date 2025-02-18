@@ -14,7 +14,7 @@ const app = express();
 // Middleware
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://ebook-hazel-psi.vercel.app"], // Allowed domains
+    origin: ["http://localhost:3000", "https://e-book-pi-topaz.vercel.app/"], // Allowed domains
     methods: ["GET", "POST", "PUT", "DELETE"], // Allowed HTTP methods
     credentials: true, // Allow cookies & auth headers
   })
