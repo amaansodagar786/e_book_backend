@@ -8,6 +8,10 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const session = require("express-session");
 require("dotenv").config();
+const multer = require("multer");
+// const upload = multer({ dest: "uploads/" });
+const nodemailer = require("nodemailer");
+
 
 const app = express();
 
@@ -59,25 +63,28 @@ const commentSchema = new mongoose.Schema({
 
 const Comment = mongoose.model("Comment", commentSchema);
 
-// Middleware to protect routes
-// const authMiddleware = (req, res, next) => {
-//   const token = req.header("Authorization");
-//   if (!token) {
-//     return res.status(401).json({ message: "No token provided, authorization denied" });
-//   }
-//   try {
-//     const decoded = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret");
-//     req.user = decoded;
-//     next();
-//   } catch (error) {
-//     res.status(401).json({ message: "Token is not valid" });
-//   }
-// };
-
-// ==================== NEW: Like and Comment Endpoints ====================
 
 
-// Add a comment to a book
+// Configure Multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/"); // Store files in "uploads" directory
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname)); // Unique file name
+  },
+});
+
+const upload = multer({ storage: storage });
+
+// Book Schema
+const bookSchema = new mongoose.Schema({
+  name: String,
+  category: String,
+  filePath: String,
+});
+
+const Book = mongoose.model("Book", bookSchema);
 
 
 
@@ -206,7 +213,6 @@ app.post("/comment", authMiddleware, async (req, res) => {
 
 
 // Get Likes/Comments for a Book
-// Get Likes/Comments for a Book
 
 app.get("/details", async (req, res) => {
   const { bookTitle, bookCategory, userId } = req.query;
@@ -228,6 +234,58 @@ app.get("/details", async (req, res) => {
       comments 
     });
   } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+
+// Book Upload Route
+app.post("/api/upload-book", upload.single("file"), async (req, res) => {
+  const { name, category } = req.body;
+  const file = req.file;
+
+  if (!file) {
+    return res.status(400).json({ message: "No file uploaded" });
+  }
+
+  try {
+    const newBook = new Book({
+      name,
+      category,
+      filePath: file.path,
+    });
+
+    await newBook.save();
+
+    // Send email notification
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: process.env.EMAIL_USER, // Change to recipient email if needed
+      subject: "New Book Uploaded",
+      text: `A new book has been uploaded.\n\nName: ${name}\nCategory: ${category}`,
+      attachments: [
+        {
+          filename: file.originalname, // Keep the original file name
+          path: file.path, // Attach the uploaded file
+        },
+      ],
+    };
+
+
+    await transporter.sendMail(mailOptions);
+
+    res.status(200).json({ message: "Book uploaded successfully!" });
+  } catch (error) {
+    console.error("Upload Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
